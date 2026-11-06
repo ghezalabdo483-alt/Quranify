@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>قرآنيفاي – استمع إلى القرآن الكريم</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="icon.svg">
+<style>
+:root{--bg:#000;--p:#121212;--h:#2a2a2a;--t:#fff;--m:#b3b3b3;--g:#1db954}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--t);font-family:system-ui,"Segoe UI",Tahoma,sans-serif;height:100vh;display:grid;grid-template-columns:330px 1fr;grid-template-rows:1fr 88px;gap:8px;padding:8px}
+.box{background:var(--p);border-radius:10px;overflow:auto;padding:14px}
+#side{grid-row:1}#main{grid-row:1}
+#bar{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:10px 16px}
+h2{font-size:18px;margin-bottom:10px}
+input,select{width:100%;background:var(--h);border:0;color:var(--t);padding:10px 14px;border-radius:20px;margin-bottom:10px;font:inherit}
+.r{display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;cursor:pointer}
+.r:hover,.r.on{background:var(--h)}
+.av{width:48px;height:48px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;font-size:20px;object-fit:cover}
+.big{width:150px;height:150px;font-size:60px}
+.hd{display:flex;gap:20px;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap}
+.hd h1{font-size:34px}.hd select{width:auto;max-width:100%}
+.s{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer}
+.s:hover{background:var(--h)}.s.on{color:var(--g)}
+.s small{color:var(--m)}
+button{background:0;border:0;color:var(--t);font-size:22px;cursor:pointer}
+#pp{background:#fff;color:#000;width:44px;height:44px;border-radius:50%;font-size:18px}
+#info{width:240px}#info small{color:var(--m)}
+#mid{flex:1;display:flex;align-items:center;gap:10px}
+#sk{flex:1;accent-color:var(--g)}
+#vol{width:90px;accent-color:var(--g)}
+.tm{font-size:12px;color:var(--m);min-width:40px;text-align:center}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tabs button{font-size:14px;background:var(--h);padding:6px 14px;border-radius:16px;color:var(--m)}.tabs button.on{background:#fff;color:#000}
+.star{font-size:18px;color:var(--m)}.star.on{color:var(--g)}
+#sh.on,#rp.on{color:var(--g)}
+@media(max-width:800px){body{grid-template-columns:1fr;grid-template-rows:220px 1fr 130px}#bar{flex-wrap:wrap}#info{width:100%}#vol{display:none}}
+</style>
+</head>
+<body>
+<aside id="side" class="box"><div class="tabs"><button class="on" data-t="r">القرّاء</button><button data-t="f">المفضلة ★</button></div><input id="q" placeholder="ابحث عن قارئ..."><div id="rl">جارٍ التحميل...</div></aside>
+<main id="main" class="box"><div id="hd"></div><div id="sl"></div></main>
+<footer id="bar" class="box">
+  <div id="info"><b id="nt">—</b><br><small id="nr"></small></div>
+  <div id="mid">
+    <button id="sh" title="عشوائي">🔀</button><button id="pv" title="السابق">⏮</button><button id="pp">▶</button><button id="nx" title="التالي">⏭</button><button id="rp" title="تكرار">🔁</button>
+    <span class="tm" id="ct">0:00</span><input type="range" id="sk" min="0" max="100" value="0" step="0.1"><span class="tm" id="dt">0:00</span>
+  </div>
+  <input type="range" id="vol" min="0" max="1" step="0.05" value="1">
+</footer>
+<audio id="au" preload="none"></audio>
+<script>
+const API='https://www.mp3quran.net/api/v3/';
+// صور القرّاء: ضع الرابط أو المسار هنا بحسب رقم القارئ، مثال: {1:'img/reciters/1.jpg'}
+// تنبيه: استخدم فقط صورًا مرخّصة أو حصلت على إذن بنشرها.
+const PHOTOS={};
+let R=[],S=[],cur=null,mo=null,list=[],idx=-1,tab='r',shuf=false,rep=0;
+const $=id=>document.getElementById(id),au=$('au');
+const pad=n=>String(n).padStart(3,'0');
+const fmt=s=>isFinite(s)?Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0'):'0:00';
+const sName=n=>(S.find(x=>x.id===n)||{}).name||('سورة '+n);
+
+function avatar(r,cls=''){
+  if(PHOTOS[r.id])return `<img class="av ${cls}" src="${PHOTOS[r.id]}" alt="${r.name}">`;
+  return `<div class="av ${cls}" style="background:hsl(${(r.id*47)%360},45%,32%)">${r.name.trim()[0]||'؟'}</div>`;
+}
+const loadFav=()=>{try{return JSON.parse(localStorage.getItem('fav')||'[]')}catch(e){return[]}};
+let fav=loadFav();
+const key=n=>cur.id+':'+cur.moshaf.indexOf(mo)+':'+n;
+const isFav=n=>fav.includes(key(n));
+function toggleFav(n){const k=key(n);fav=fav.includes(k)?fav.filter(x=>x!==k):[...fav,k];try{localStorage.setItem('fav',JSON.stringify(fav))}catch(e){}renderS();if(tab==='f')renderF()}
+function renderF(){$('rl').innerHTML=fav.map(k=>{const[rid,mi,n]=k.split(':').map(Number);const r=R.find(x=>x.id===rid);return r?`<div class="r" data-fv="${k}">${avatar(r)}<span>${sName(n)}<br><small style="color:var(--m)">${r.name}</small></span></div>`:''}).join('')||'لم تضف أي مفضلة بعد. اضغط ★ بجانب أي سورة.'}
+function renderR(f=''){
+  if(tab==='f')return renderF();
+  $('rl').innerHTML=R.filter(r=>r.name.includes(f)).map(r=>
+    `<div class="r ${cur&&cur.id===r.id?'on':''}" data-id="${r.id}">${avatar(r)}<span>${r.name}</span></div>`).join('')||'لا نتائج';
+}
+function pick(r){
+  cur=r;mo=r.moshaf[0];renderR($('q').value);header();renderS();
+}
+function header(){
+  $('hd').innerHTML=`<div class="hd">${avatar(cur,'big')}<div><small>قارئ</small><h1>${cur.name}</h1>
+  <select id="ms">${cur.moshaf.map((m,i)=>`<option value="${i}" ${m===mo?'selected':''}>${m.name}</option>`).join('')}</select></div></div>`;
+  $('ms').onchange=e=>{mo=cur.moshaf[e.target.value];renderS()};
+}
+function renderS(){
+  list=mo.surah_list.split(',').map(Number);
+  $('sl').innerHTML=list.map((n,i)=>`<div class="s ${playing(i)?'on':''}" data-i="${i}"><small>${n}</small><span>${sName(n)}</span><button class="star ${isFav(n)?'on':''}" data-f="${n}">★</button></div>`).join('');
+}
+const playing=i=>idx===i&&au.src&&au.src.startsWith(mo.server);
+function play(i){
+  if(i<0||i>=list.length)return;
+  idx=i;const n=list[i];
+  au.src=mo.server+pad(n)+'.mp3';au.play();
+  $('nt').textContent=sName(n);$('nr').textContent=cur.name;
+  if('mediaSession'in navigator)navigator.mediaSession.metadata=new MediaMetadata({title:sName(n),artist:cur.name});
+  renderS();
+}
+$('rl').onclick=e=>{const d=e.target.closest('.r');if(!d)return;
+  if(d.dataset.fv){const[rid,mi,n]=d.dataset.fv.split(':').map(Number);const r=R.find(x=>x.id===rid);if(!r)return;cur=r;mo=r.moshaf[mi]||r.moshaf[0];header();renderS();play(list.indexOf(n));return}
+  pick(R.find(r=>r.id==d.dataset.id))};
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$('q').style.display=tab==='r'?'':'none';renderR($('q').value)});
+$('sl').onclick=e=>{const st=e.target.closest('.star');if(st)return toggleFav(+st.dataset.f);const d=e.target.closest('.s');if(d)play(+d.dataset.i)};
+$('q').oninput=e=>renderR(e.target.value);
+$('pp').onclick=()=>au.src?(au.paused?au.play():au.pause()):play(0);
+function next(){if(rep==2)return play(idx);if(shuf)return play(Math.floor(Math.random()*list.length));if(idx+1>=list.length)return rep?play(0):0;play(idx+1)}
+$('sh').onclick=()=>{shuf=!shuf;$('sh').classList.toggle('on',shuf)};
+$('rp').onclick=()=>{rep=(rep+1)%3;$('rp').classList.toggle('on',rep>0);$('rp').textContent=rep==2?'🔂':'🔁'};
+$('nx').onclick=next;$('pv').onclick=()=>play(idx-1);
+au.onplay=()=>$('pp').textContent='⏸';au.onpause=()=>$('pp').textContent='▶';
+au.onended=next;
+au.ontimeupdate=()=>{$('ct').textContent=fmt(au.currentTime);$('dt').textContent=fmt(au.duration);$('sk').value=au.duration?au.currentTime/au.duration*100:0};
+$('sk').oninput=e=>{if(au.duration)au.currentTime=e.target.value/100*au.duration};
+$('vol').oninput=e=>au.volume=e.target.value;
+if('mediaSession'in navigator){navigator.mediaSession.setActionHandler('nexttrack',next);navigator.mediaSession.setActionHandler('previoustrack',()=>play(idx-1))}
+
+(async()=>{
+  try{
+    const [r,s]=await Promise.all([fetch(API+'reciters?language=ar').then(x=>x.json()),fetch(API+'suwar?language=ar').then(x=>x.json())]);
+    R=r.reciters;S=s.suwar;renderR();pick(R[0]);
+  }catch(e){$('rl').textContent='تعذّر تحميل البيانات، تحقق من الاتصال.'}
+})();
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
